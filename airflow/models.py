@@ -2573,8 +2573,6 @@ class DagRun(Base):
             execution_date=self.execution_date,
             run_id=self.run_id,
             external_trigger=self.external_trigger)
-        return str((
-            self.dag_id, self.run_id, self.execution_date.isoformat()))
 
 
 class Pool(Base):
