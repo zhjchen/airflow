@@ -686,7 +686,7 @@ class TaskInstance(Base):
             return False
         elif self.task.end_date and self.execution_date > self.task.end_date:
             return False
-        elif self.state == State.SKIPPED:
+        elif self.state in (State.SKIPPED, State.QUEUED):
             return False
         elif (
                 self.state in State.runnable() and
@@ -2027,6 +2027,41 @@ class DAG(object):
                 l.append(task.subdag)
                 l += task.subdag.subdags
         return l
+
+    def get_active_runs(self):
+        """
+        Maintains and returns the currently active runs as a list of dates
+        """
+        TI = TaskInstance
+        session =  settings.Session()
+        # Checking state of active DagRuns
+        active_runs = []
+        active_runs = (
+            session.query(DagRun)
+            .filter(
+                DagRun.dag_id == self.dag_id,
+                DagRun.state == State.RUNNING)
+            .all()
+        )
+        for run in active_runs:
+            logging.info("Checking state for " + str(run))
+            task_instances = session.query(TI).filter(
+                TI.dag_id == run.dag_id,
+                TI.task_id.in_(self.task_ids),
+                TI.execution_date == run.execution_date,
+            ).all()
+            if len(task_instances) == len(self.tasks):
+                task_states = [ti.state for ti in task_instances]
+                if State.FAILED in task_states:
+                    logging.info('Marking run {} failed'.format(run))
+                    run.state = State.FAILED
+                elif set(task_states) == set([State.SUCCESS]):
+                    logging.info('Marking run {} successful'.format(run))
+                    run.state = State.SUCCESS
+                else:
+                    active_runs.append(run.execution_date)
+        session.commit()
+        return active_runs
 
     def resolve_template_files(self):
         for t in self.tasks:

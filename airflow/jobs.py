@@ -7,6 +7,7 @@ from builtins import str
 from past.builtins import basestring
 from collections import defaultdict
 from datetime import datetime
+from itertools import product
 import getpass
 import logging
 import signal
@@ -359,7 +360,7 @@ class SchedulerJob(BaseJob):
                 dag_id=dag.dag_id,
                 run_id='scheduled',
                 execution_date=next_run_date,
-                state='active',
+                state=State.RUNNING,
                 external_trigger=False
             )
             session.add(next_run)
@@ -376,6 +377,7 @@ class SchedulerJob(BaseJob):
         function takes a lock on the DAG and timestamps the last run
         in ``last_scheduler_run``.
         """
+        TI = models.TaskInstance
         DagModel = models.DagModel
         session = settings.Session()
 
@@ -401,98 +403,18 @@ class SchedulerJob(BaseJob):
             db_dag.last_scheduler_run = datetime.now()
             session.commit()
 
-        TI = models.TaskInstance
-        logging.info(
-            "Getting latest instance "
-            "for all tasks in dag " + dag.dag_id)
-        sq = (
-            session
-            .query(
-                TI.task_id,
-                func.max(TI.execution_date).label('max_ti'))
-            .filter(TI.dag_id == dag.dag_id)
-            .group_by(TI.task_id).subquery('sq')
-        )
+        active_runs = dag.get_active_runs()
 
-        qry = session.query(TI).filter(
-            TI.dag_id == dag.dag_id,
-            TI.task_id == sq.c.task_id,
-            TI.execution_date == sq.c.max_ti,
-        )
-        logging.debug("Querying max dates for each task")
-        latest_ti = qry.all()
-        ti_dict = {ti.task_id: ti for ti in latest_ti}
-        session.expunge_all()
-        session.commit()
-        logging.debug("{} rows returned".format(len(latest_ti)))
-
-        for task in dag.tasks:
+        for task, dttm in product(dag.tasks, active_runs):
             if task.adhoc:
                 continue
-            if task.task_id not in ti_dict:
-                # TODO: Check whether this needs to be changed with DagRun refactoring
-                # Brand new task, let's get started
-                ti = TI(task, task.start_date)
-                ti.refresh_from_db()
-                if ti.is_queueable(flag_upstream_failed=True):
-                    logging.info(
-                        'First run for {ti}'.format(**locals()))
-                    executor.queue_task_instance(ti, pickle_id=pickle_id)
-            else:
-                ti = ti_dict[task.task_id]
-                ti.task = task  # Hacky but worky
-                if ti.state == State.RUNNING:
-                    continue  # Only one task at a time
-                elif ti.state == State.UP_FOR_RETRY:
-                    # If task instance if up for retry, make sure
-                    # the retry delay is met
-                    if ti.is_runnable():
-                        logging.debug('Triggering retry: ' + str(ti))
-                        executor.queue_task_instance(ti, pickle_id=pickle_id)
-                elif ti.state == State.QUEUED:
-                    # If was queued we skipped so that in gets prioritized
-                    # in self.prioritize_queued
-                    continue
-                else:
-                    # Checking whether there is a DagRun for which a task
-                    # needs to be created
-                    qry = session.query(func.min(models.DagRun.execution_date)).filter(
-                        and_(models.DagRun.dag_id == dag.dag_id,
-                        models.DagRun.execution_date > ti.execution_date))
-                    next_schedule = qry.scalar()
-                    if not next_schedule:
-                        continue
-
-                    ti = TI(
-                        task=task,
-                        execution_date=next_schedule,
-                    )
-                    ti.refresh_from_db()
-                    if ti.is_queueable(flag_upstream_failed=True):
-                        logging.debug('Queuing next run: ' + str(ti))
-                        executor.queue_task_instance(ti, pickle_id=pickle_id)
-
-        # Checking state of active DagRuns
-        active_runs = session.query(models.DagRun).filter(
-            models.DagRun.dag_id == dag.dag_id,
-            models.DagRun.state == 'active'
-        ).all()
-        for run in active_runs:
-            logging.info("Checking state for " + str(run))
-            task_instances = session.query(TI).filter(
-                TI.dag_id == run.dag_id,
-                TI.execution_date == run.execution_date
-            ).all()
-            if len(task_instances) == len(dag.tasks):
-                task_states = [ti.state for ti in task_instances]
-                if 'failed' in task_states:
-                    logging.info(str(run) + 'is failed')
-                    run.state = 'failed'
-                if set(task_states) == set(['success']):
-                    logging.info(str(run) + 'is successful')
-                    run.state = 'success'
-            else:
-                logging.info('not all tasks are finished')
+            ti = TI(task, dttm)
+            ti.refresh_from_db()
+            if ti.state in (State.RUNNING, State.QUEUED, State.SUCCESS):
+                continue
+            elif ti.is_runnable(flag_upstream_failed=True):
+                logging.debug('Queuing next run: ' + str(ti))
+                executor.queue_task_instance(ti, pickle_id=pickle_id)
 
         # Releasing the lock
         logging.debug("Unlocking DAG (scheduler_lock)")
