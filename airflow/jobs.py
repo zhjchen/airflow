@@ -259,15 +259,16 @@ class SchedulerJob(BaseJob):
             task = dag.get_task(ti.task_id)
             dttm = ti.execution_date
             if task.sla:
-                dttm += dag.schedule_interval
+                dttm = dag.following_schedule(dttm)
+                following_schedule = dag.following_schedule(dttm)
                 while dttm < datetime.now():
-                    if dttm + task.sla + dag.schedule_interval < datetime.now():
+                    if following_schedule + task.sla < datetime.now():
                         session.merge(models.SlaMiss(
                             task_id=ti.task_id,
                             dag_id=ti.dag_id,
                             execution_date=dttm,
                             timestamp=ts))
-                    dttm += dag.schedule_interval
+                    dttm = dag.following_schedule(dttm)
         session.commit()
 
         slas = (
@@ -349,7 +350,7 @@ class SchedulerJob(BaseJob):
         last_scheduled_run = qry.scalar()
         if not last_scheduled_run or last_scheduled_run <= datetime.now():
             if last_scheduled_run:
-                next_run_date = last_scheduled_run + dag.schedule_interval
+                next_run_date = dag.following_schedule(last_scheduled_run)
             else:
                 next_run_date = dag.default_args['start_date']
             if not next_run_date:

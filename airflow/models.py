@@ -32,6 +32,9 @@ from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import relationship, synonym
 
+from croniter import croniter
+import six
+
 from airflow import settings, utils
 from airflow.executors import DEFAULT_EXECUTOR, LocalExecutor
 from airflow.configuration import conf
@@ -754,7 +757,7 @@ class TaskInstance(Base):
                 TI.dag_id == self.dag_id,
                 TI.task_id == task.task_id,
                 TI.execution_date ==
-                self.execution_date-task.schedule_interval,
+                    self.task.dag.previous_schedule(self.execution_date),
                 TI.state == State.SUCCESS,
             ).first()
             if not previous_ti:
@@ -1862,7 +1865,8 @@ class DAG(object):
         timedelta object gets added to your latest task instance's
         execution_date to figure out the next schedule
     :type schedule_interval: datetime.timedelta or
-        dateutil.relativedelta.relativedelta
+        dateutil.relativedelta.relativedelta or str that acts as a cron
+        expression
     :param start_date: The timestamp from which the scheduler will
         attempt to backfill
     :type start_date: datetime.datetime
@@ -1956,6 +1960,20 @@ class DAG(object):
             except TypeError:
                 hash_components.append(repr(val))
         return hash(tuple(hash_components))
+
+    def following_schedule(self, dttm):
+        if isinstance(self.schedule_interval, six.string_types):
+            cron = croniter(self.schedule_interval, dttm)
+            return cron.get_next(datetime)
+        else:
+            return dttm + self.schedule_interval
+
+    def previous_schedule(self, dttm):
+        if isinstance(self.schedule_interval, six.string_types):
+            cron = croniter(self.schedule_interval, dttm)
+            return cron.get_prev(datetime)
+        else:
+            return dttm - self.schedule_interval
 
     @property
     def task_ids(self):
