@@ -349,13 +349,12 @@ class SchedulerJob(BaseJob):
             DagRun.external_trigger == False
         ))
         last_scheduled_run = qry.scalar()
-        if not last_scheduled_run or last_scheduled_run <= datetime.now():
-            if last_scheduled_run:
-                next_run_date = dag.following_schedule(last_scheduled_run)
-            else:
-                next_run_date = dag.default_args['start_date']
-            if not next_run_date:
-                raise Exception('no next_run_date defined!')
+        if not last_scheduled_run:
+            next_run_date = min([t.start_date for t in dag.tasks])
+        else:
+            next_run_date = dag.following_schedule(last_scheduled_run)
+
+        if next_run_date <= datetime.now():
             next_run = DagRun(
                 dag_id=dag.dag_id,
                 run_id='scheduled',
@@ -365,8 +364,6 @@ class SchedulerJob(BaseJob):
             )
             session.add(next_run)
             session.commit()
-
-
 
     def process_dag(self, dag, executor):
         """
