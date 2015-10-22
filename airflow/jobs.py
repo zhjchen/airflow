@@ -357,7 +357,7 @@ class SchedulerJob(BaseJob):
         if next_run_date <= datetime.now():
             next_run = DagRun(
                 dag_id=dag.dag_id,
-                run_id='scheduled',
+                run_id='scheduled__' + next_run_date.isoformat(),
                 execution_date=next_run_date,
                 state=State.RUNNING,
                 external_trigger=False
