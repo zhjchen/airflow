@@ -7,6 +7,11 @@ it monitors a folder for all DAG objects it may contain,
 and periodically inspects all tasks to see whether it can schedule the
 next run.
 
+The Airflow scheduler is designed to run as a persistent service in an
+Airflow production environment. To kick it off, all you need to do is
+execute ``airflow scheduler``. It will use the configuration specified in
+``airflow.cfg``.
+
 Note that if you run a DAG on a ``schedule_interval`` of one day,
 the run stamped ``2016-01-01`` will be trigger soon after ``2016-01-01T23:59``.
 In other words, the job instance is started once the period it covers
@@ -14,8 +19,8 @@ has ended.
 
 The scheduler starts an instance of the executor specified in the your
 ``airflow.cfg``. If it happens to be the LocalExecutor, tasks will be
-executed as subprocesses; in the case of CeleryExecutor and MesosExecutor, tasks are
-executed remotely.
+executed as subprocesses; in the case of CeleryExecutor and MesosExecutor, 
+tasks are executed remotely.
 
 To start a scheduler, simply run the command:
 
@@ -23,15 +28,44 @@ To start a scheduler, simply run the command:
 
     airflow scheduler
 
-Note that:
 
-* It **won't parallelize** multiple instances of the same tasks; it always wait for the previous schedule to be done before moving forward
-* It will **not fill in gaps**; it only moves forward in time from the latest task instance on that task
-* If a task instance failed and the task is set to ``depends_on_past=True``, it won't move forward from that point until the error state is cleared and the task runs successfully, or is marked as successful
-* If no task history exists for a task, it will attempt to run it on the task's ``start_date``
+DAG Runs
+''''''''
 
-Understanding this, you should be able to comprehend what is keeping your
-tasks from running or moving forward. To allow the scheduler to move forward, you may want to clear the state of some task instances, or mark them as successful.
+Each DAG may or may not have a schedule, which informs how ``DAG Runs`` are
+created. ``schedule_interval`` is defined as a DAG arguments, and receives 
+preferably a
+[cron expression](https://en.wikipedia.org/wiki/Cron#CRON_expression) as
+a ``str``, or a ``datetime.timedelta`` object. Your DAG will be instantiated
+for each schedule, while creating a ``DAG Run`` entry for each schedule.
+
+DAG runs have a state associated to them (running, failed, success) and
+informs the scheduler on which set of schedules should be evaluated for
+task submissions. Without the metadata at the DAG run level, the Airflow
+scheduler would have much more work to do in order to figure out what tasks
+should be triggered and come to a crawl. It might also create undesired
+processing when changing the shape of your DAG, by say adding in new
+tasks.
+
+External Triggers
+'''''''''''''''''
+
+Note that ``DAG Runs`` can also be created manually through the CLI while
+running an ``airflow trigger_dag`` command, where you can define a
+specific ``run_id``. The ``DAG Runs`` created externally to the
+scheduler get associated to the trigger's timestamp, and will be displayed
+in the UI alongside scheduled ``DAG runs``.
+
+
+To Keep in Mind
+'''''''''''''''
+* The first ``DAG Run`` is created based on the minimum ``start_date`` for the
+  tasks in your DAG.
+* Subsequent ``DAG Runs`` are created by the scheduler process, based on
+  your DAG's ``schedule_interval``, sequentially.
+* When clearing a set of tasks' state in hope of getting them to re-run, 
+  it is important to keep in mind the ``DAG Run``'s state too as it defines
+  whether the scheduler should look into triggering tasks for that run.
 
 Here are some of the ways you can **unblock tasks**:
 
@@ -40,7 +74,3 @@ Here are some of the ways you can **unblock tasks**:
 * Marking task instances as successful can be done through the UI. This is mostly to fix false negatives, or for instance when the fix has been applied outside of Airflow.
 * The ``airflow backfill`` CLI subcommand has a flag to ``--mark_success`` and allows selecting subsections of the DAG as well as specifying date ranges.
 
-The Airflow scheduler is designed to run as a persistent service in an
-Airflow production environment. To kick it off, all you need to do is
-execute ``airflow scheduler``. It will use the configuration specified in
-``airflow.cfg``.
