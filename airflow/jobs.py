@@ -401,7 +401,6 @@ class SchedulerJob(BaseJob):
             session.commit()
 
         active_runs = dag.get_active_runs()
-
         for task, dttm in product(dag.tasks, active_runs):
             if task.adhoc:
                 continue
@@ -410,7 +409,7 @@ class SchedulerJob(BaseJob):
             if ti.state in (State.RUNNING, State.QUEUED, State.SUCCESS):
                 continue
             elif ti.is_runnable(flag_upstream_failed=True):
-                logging.debug('Queuing next run: ' + str(ti))
+                logging.debug('Firing task: {}'.format(ti))
                 executor.queue_task_instance(ti, pickle_id=pickle_id)
 
         # Releasing the lock

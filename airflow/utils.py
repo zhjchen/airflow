@@ -85,7 +85,10 @@ class State(object):
 
     @classmethod
     def color(cls, state):
-        return cls.state_color[state]
+        if state in cls.state_color:
+            return cls.state_color[state]
+        else:
+            return 'white'
 
     @classmethod
     def runnable(cls):

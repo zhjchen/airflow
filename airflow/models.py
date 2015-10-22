@@ -2034,8 +2034,7 @@ class DAG(object):
         """
         TI = TaskInstance
         session =  settings.Session()
-        # Checking state of active DagRuns
-        active_runs = []
+        active_dates = []
         active_runs = (
             session.query(DagRun)
             .filter(
@@ -2044,7 +2043,7 @@ class DAG(object):
             .all()
         )
         for run in active_runs:
-            logging.info("Checking state for " + str(run))
+            logging.info("Checking state for {}".format(run))
             task_instances = session.query(TI).filter(
                 TI.dag_id == run.dag_id,
                 TI.task_id.in_(self.task_ids),
@@ -2055,13 +2054,18 @@ class DAG(object):
                 if State.FAILED in task_states:
                     logging.info('Marking run {} failed'.format(run))
                     run.state = State.FAILED
-                elif set(task_states) == set([State.SUCCESS]):
+                elif len(
+                    set(task_states) |
+                    set([State.SUCCESS, State.SKIPPED])
+                ) == 2:
                     logging.info('Marking run {} successful'.format(run))
                     run.state = State.SUCCESS
                 else:
-                    active_runs.append(run.execution_date)
+                    active_dates.append(run.execution_date)
+            else:
+                active_dates.append(run.execution_date)
         session.commit()
-        return active_runs
+        return active_dates
 
     def resolve_template_files(self):
         for t in self.tasks:
@@ -2563,12 +2567,14 @@ class DagRun(Base):
     dag_id = Column(String(ID_LEN), primary_key=True)
     execution_date = Column(DateTime, primary_key=True)
     state = Column(String(50))
-    run_id = Column(String(ID_LEN))
+    run_id = Column(String(ID_LEN), default='running')
     external_trigger = Column(Boolean, default=False)
 
     def __repr__(self):
-        return '<DagRun {dag_id} @ {execution_date}: {run_id}, \
-            externally triggered: {external_trigger}>'.format(
+        return (
+            '<DagRun {dag_id} @ {execution_date}: {run_id}, '
+            'externally triggered: {external_trigger}>'
+        ).format(
             dag_id=self.dag_id,
             execution_date=self.execution_date,
             run_id=self.run_id,

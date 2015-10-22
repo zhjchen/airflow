@@ -15,7 +15,7 @@ from airflow import jobs, settings, utils
 from airflow.configuration import conf
 from airflow.executors import DEFAULT_EXECUTOR
 from airflow.models import DagBag, TaskInstance, DagPickle, DagRun
-from airflow.utils import AirflowException
+from airflow.utils import AirflowException, State
 
 DAGS_FOLDER = os.path.expanduser(conf.get('core', 'DAGS_FOLDER'))
 
@@ -85,6 +85,7 @@ def trigger_dag(args):
         dag_id=dag_id,
         run_id=run_id,
         execution_date=execution_date,
+        state=State.RUNNING,
         external_trigger=True)
     session.add(trigger)
     session.commit()
