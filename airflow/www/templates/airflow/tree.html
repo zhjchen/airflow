@@ -208,7 +208,9 @@ function update(source) {
       .enter()
       .append('rect')
       .on("click", function(d){
-        if(d.task_id === undefined){}
+        if(d.task_id === undefined){
+          window.location = '/admin/dagrun/edit/?id=' + encodeURIComponent(d.dag_id) + ',' + encodeURIComponent(d.execution_date);
+        }
         else if(nodeobj[d.task_id].operator=='SubDagOperator')
             call_modal(d.task_id, d.execution_date, true);
         else
@@ -218,7 +220,7 @@ function update(source) {
       .attr("data-toggle", "tooltip")
       .attr("rx", function(d) {return (d.run_id != undefined)? "5": "0"})
       .attr("ry", function(d) {return (d.run_id != undefined)? "5": "0"})
-      .style("stroke-width", function(d) {return (d.run_id != undefined)? "3": "1"})
+      .style("stroke-width", function(d) {return (d.run_id != undefined)? "2": "1"})
       .style("stroke-opacity", function(d) {return d.external_trigger ? "0": "1"})
       .attr("title", function(d){
         s =  "Run: " + d.execution_date + "<br>";
@@ -243,7 +245,7 @@ function update(source) {
        })
       .on('mouseout', function(d,i) {
         d3.select(this).transition()
-          .style("stroke-width", function(d) {return (d.run_id != undefined)? "3": "1"})
+          .style("stroke-width", function(d) {return (d.run_id != undefined)? "2": "1"})
        }) ;
 
 

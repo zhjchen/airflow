@@ -1703,7 +1703,7 @@ class BaseOperator(object):
         end_date = end_date or self.end_date or datetime.now()
 
         for dt in utils.date_range(
-                start_date, end_date, self.schedule_interval):
+                start_date, end_date, delta=self.schedule_interval):
             TaskInstance(self, dt).run(
                 mark_success=mark_success,
                 ignore_dependencies=ignore_dependencies,
