@@ -450,31 +450,39 @@ class SchedulerJob(BaseJob):
 
         for pool, tis in list(d.items()):
             open_slots = pools[pool].open_slots(session=session)
-            if open_slots > 0:
-                tis = sorted(
-                    tis, key=lambda ti: (-ti.priority_weight, ti.start_date))
-                for ti in tis[:open_slots]:
-                    task = None
-                    try:
-                        task = dagbag.dags[ti.dag_id].get_task(ti.task_id)
-                    except:
-                        logging.error("Queued task {} seems gone".format(ti))
+            if not open_slots:
+                return
+            tis = sorted(
+                tis, key=lambda ti: (-ti.priority_weight, ti.start_date))
+            for ti in tis:
+                if not open_slots:
+                    return
+                task = None
+                try:
+                    task = dagbag.dags[ti.dag_id].get_task(ti.task_id)
+                except:
+                    logging.error("Queued task {} seems gone".format(ti))
+                    session.delete(ti)
+                if task:
+                    ti.task = task
+
+                    # picklin'
+                    dag = dagbag.dags[ti.dag_id]
+                    pickle_id = None
+                    if self.do_pickle and self.executor.__class__ not in (
+                            executors.LocalExecutor,
+                            executors.SequentialExecutor):
+                        pickle_id = dag.pickle(session).id
+
+                    if (
+                            ti.are_dependencies_met() and
+                            not task.dag.concurrency_reached):
+                        executor.queue_task_instance(
+                            ti, force=True, pickle_id=pickle_id)
+                        open_slots -= 1
+                    else:
                         session.delete(ti)
-                    if task:
-                        ti.task = task
-
-                        # picklin'
-                        dag = dagbag.dags[ti.dag_id]
-                        pickle_id = None
-                        if self.do_pickle and self.executor.__class__ not in (
-                            executors.LocalExecutor, executors.SequentialExecutor):
-                            pickle_id = dag.pickle(session).id
-
-                        if ti.are_dependencies_met():
-                            executor.queue_task_instance(ti, force=True, pickle_id=pickle_id)
-                        else:
-                            session.delete(ti)
-                    session.commit()
+                session.commit()
 
     def _execute(self):
         dag_id = self.dag_id
