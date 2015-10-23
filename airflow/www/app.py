@@ -34,7 +34,6 @@ def create_app(config=None):
 
         from airflow.www import views
         admin.add_view(views.Airflow(name='DAGs'))
-
         admin.add_view(views.SlaMissModelView(models.SlaMiss, Session, name="SLA Misses", category="Browse"))
         admin.add_view(views.TaskInstanceModelView(models.TaskInstance, Session, name="Task Instances", category="Browse"))
         admin.add_view(views.LogModelView(models.Log, Session, name="Logs", category="Browse"))
@@ -71,7 +70,111 @@ def create_app(config=None):
         @app.context_processor
         def jinja_globals():
             return {
+<<<<<<< d9e10e9ae94ea63cafa4a0847a8694ce610fad73
                 'hostname': socket.gethostname(),
+=======
+                'name': task.task_id,
+                'instances': [
+                        task_instances.get((task.task_id, d)) or {
+                            'execution_date': d.isoformat(),
+                            'task_id': task.task_id
+                        }
+                    for d in dates],
+                children_key: children,
+                'num_dep': len(task.upstream_list),
+                'operator': task.task_type,
+                'retries': task.retries,
+                'owner': task.owner,
+                'start_date': task.start_date,
+                'end_date': task.end_date,
+                'depends_on_past': task.depends_on_past,
+                'ui_color': task.ui_color,
+            }
+        data = {
+            'name': '[DAG]',
+            'children': [recurse_nodes(t, set()) for t in dag.roots],
+            'instances': [
+                dag_runs.get(d) or {'execution_date': d.isoformat()}
+                for d in dates],
+        }
+
+        data = json.dumps(data, indent=4, default=utils.json_ser)
+        session.commit()
+        session.close()
+
+        form = TreeForm(data={'base_date': max_date, 'num_runs': num_runs})
+        return self.render(
+            'airflow/tree.html',
+            operators=sorted(
+                list(set([op.__class__ for op in dag.tasks])),
+                key=lambda x: x.__name__
+            ),
+            root=root,
+            form=form,
+            dag=dag, data=data, blur=blur)
+
+    @expose('/graph')
+    @login_required
+    @wwwutils.gzipped
+    def graph(self):
+        session = settings.Session()
+        dag_id = request.args.get('dag_id')
+        blur = conf.getboolean('webserver', 'demo_mode')
+        arrange = request.args.get('arrange', "LR")
+        dag = dagbag.get_dag(dag_id)
+        if dag_id not in dagbag.dags:
+            flash('DAG "{0}" seems to be missing.'.format(dag_id), "error")
+            return redirect('/admin/')
+
+        root = request.args.get('root')
+        if root:
+            dag = dag.sub_dag(
+                task_regex=root,
+                include_upstream=True,
+                include_downstream=False)
+
+        nodes = []
+        edges = []
+        for task in dag.tasks:
+            nodes.append({
+                'id': task.task_id,
+                'value': {
+                    'label': task.task_id,
+                    'labelStyle': "fill:{0};".format(task.ui_fgcolor),
+                    'style': "fill:{0};".format(task.ui_color),
+                }
+            })
+
+        def get_upstream(task):
+            for t in task.upstream_list:
+                edge = {
+                    'u': t.task_id,
+                    'v': task.task_id,
+                }
+                if edge not in edges:
+                    edges.append(edge)
+                    get_upstream(t)
+
+        for t in dag.roots:
+            get_upstream(t)
+
+        dttm = request.args.get('execution_date')
+        if dttm:
+            dttm = dateutil.parser.parse(dttm)
+        else:
+            dttm = dag.latest_execution_date or datetime.now().date()
+
+        form = GraphForm(data={'execution_date': dttm, 'arrange': arrange})
+
+        task_instances = {
+            ti.task_id: utils.alchemy_to_dict(ti)
+            for ti in dag.get_task_instances(session, dttm, dttm)
+        }
+        tasks = {
+            t.task_id: {
+                'dag_id': t.dag_id,
+                'task_type': t.task_type,
+>>>>>>> Got the UI to show externaly triggered runs, root object for DAG Run
             }
 
         @app.teardown_appcontext
