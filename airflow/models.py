@@ -2157,19 +2157,27 @@ class DAG(object):
     def roots(self):
         return [t for t in self.tasks if not t.downstream_list]
 
+    @provide_session
+    def set_dag_runs_state(
+            self, start_date, end_date, state=State.RUNNING, session=None):
+        dates = utils.date_range(start_date, end_date)
+        drs = session.query(DagModel).filter_by(dag_id=self.dag_id).all()
+        for dr in drs:
+            dr.state = State.RUNNING
+
     def clear(
             self, start_date=None, end_date=None,
             only_failed=False,
             only_running=False,
             confirm_prompt=False,
             include_subdags=True,
+            reset_dag_runs=True,
             dry_run=False):
         session = settings.Session()
         """
         Clears a set of task instances associated with the current dag for
         a specified date range.
         """
-
         TI = TaskInstance
         tis = session.query(TI)
         if include_subdags:
@@ -2199,6 +2207,7 @@ class DAG(object):
             return tis
 
         count = tis.count()
+        do_it = True
         if count == 0:
             print("Nothing to clear.")
             return 0
@@ -2208,13 +2217,15 @@ class DAG(object):
                 "You are about to delete these {count} tasks:\n"
                 "{ti_list}\n\n"
                 "Are you sure? (yes/no): ").format(**locals())
-            if utils.ask_yesno(question):
-                clear_task_instances(tis, session)
-            else:
-                count = 0
-                print("Bail. Nothing was cleared.")
-        else:
+            do_it = utils.ask_yesno(question)
+
+        if do_it:
             clear_task_instances(tis, session)
+            if reset_dag_runs:
+                self.set_dag_runs_state(start_date, end_date, session=session)
+        else:
+            count = 0
+            print("Bail. Nothing was cleared.")
 
         session.commit()
         session.close()
@@ -2586,8 +2597,8 @@ class DagRun(Base):
 
     dag_id = Column(String(ID_LEN), primary_key=True)
     execution_date = Column(DateTime, primary_key=True)
-    state = Column(String(50))
-    run_id = Column(String(ID_LEN), default='running')
+    state = Column(String(50), default=State.RUNNING)
+    run_id = Column(String(ID_LEN))
     external_trigger = Column(Boolean, default=False)
 
     def __repr__(self):
