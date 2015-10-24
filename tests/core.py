@@ -502,6 +502,13 @@ if 'MySqlOperator' in dir(operators):
                 dag=self.dag)
             t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
 
+        def test_sql_sensor(self):
+            t = operators.TimeSensor(
+                task_id='sql_sensor_check',
+                sql="SELECT count(1) FROM INFORMATION_SCHEMA.TABLES",
+                dag=self.dag)
+            t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
+
 
 if 'PostgresOperator' in dir(operators):
     # Only testing if the operator is installed
