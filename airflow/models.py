@@ -2595,8 +2595,9 @@ class DagRun(Base):
     """
     __tablename__ = "dag_run"
 
-    dag_id = Column(String(ID_LEN), primary_key=True)
-    execution_date = Column(DateTime, primary_key=True)
+    id = Column(Integer, primary_key=True)
+    dag_id = Column(String(ID_LEN), unique=True)
+    execution_date = Column(DateTime, unique=True)
     state = Column(String(50), default=State.RUNNING)
     run_id = Column(String(ID_LEN))
     external_trigger = Column(Boolean, default=False)
