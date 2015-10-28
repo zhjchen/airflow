@@ -22,6 +22,7 @@ from sqlalchemy import or_
 from flask import redirect, url_for, request, Markup, Response, current_app, render_template
 from flask.ext.admin import BaseView, expose, AdminIndexView
 from flask.ext.admin.contrib.sqla import ModelView
+from flask.ext.admin.actions import action
 from flask.ext.login import current_user, flash, logout_user, login_required
 from flask._compat import PY2
 
@@ -111,11 +112,15 @@ def task_instance_link(v, c, m, p):
         """.format(**locals()))
 
 
-def state_f(v, c, m, p):
-    color = State.color(m.state)
+def state_token(state):
+    color = State.color(state)
     return Markup(
         '<span class="label" style="background-color:{color};">'
-        '{m.state}</span>'.format(**locals()))
+        '{state}</span>'.format(**locals()))
+
+
+def state_f(v, c, m, p):
+    return state_token(m.state)
 
 
 def duration_f(v, c, m, p):
@@ -1016,47 +1021,42 @@ class Airflow(BaseView):
 
         session = settings.Session()
 
-        start_date = dag.start_date
-        if not start_date and 'start_date' in dag.default_args:
-            start_date = dag.default_args['start_date']
-
         base_date = request.args.get('base_date')
         num_runs = request.args.get('num_runs')
         num_runs = int(num_runs) if num_runs else 25
 
-        if not base_date:
-            # New DAGs will not have a latest execution date
-            if dag.latest_execution_date:
-                base_date = dag.latest_execution_date + 2 * dag.schedule_interval
-            else:
-                base_date = datetime.now()
-        else:
+        if base_date:
             base_date = dateutil.parser.parse(base_date)
-
-        start_date = dag.start_date
-        if not start_date and 'start_date' in dag.default_args:
-            start_date = dag.default_args['start_date']
-
-        # if a specific base_date is requested, don't round it
-        if not request.args.get('base_date'):
-            if start_date:
-                base_date = utils.round_time(
-                    base_date, dag.schedule_interval, start_date)
-            else:
-                base_date = utils.round_time(base_date, dag.schedule_interval)
-
-        form = TreeForm(data={'base_date': base_date, 'num_runs': num_runs})
-
-        from_date = (base_date - (num_runs * dag.schedule_interval))
+        else:
+            base_date = dag.latest_execution_date or datetime.now()
 
         dates = utils.date_range(
-            from_date, base_date, dag.schedule_interval)
+            base_date, num=-abs(num_runs), delta=dag.schedule_interval)
+
+        DR = models.DagRun
+        dag_runs = (
+            session.query(DR)
+            .filter(
+                DR.dag_id==dag.dag_id,
+                DR.execution_date>=dates[0],
+                DR.execution_date<=dates[-1])
+            .all()
+        )
+        dag_runs = {
+            dr.execution_date: utils.alchemy_to_dict(dr) for dr in dag_runs}
+
+        tis = dag.get_task_instances(
+                session, start_date=dates[0], end_date=dates[-1])
+        dates = sorted(list({ti.execution_date for ti in tis}))
+        max_date = max([ti.execution_date for ti in tis])
         task_instances = {}
-        for ti in dag.get_task_instances(session, from_date):
-            task_instances[(ti.task_id, ti.execution_date)] = ti
+        for ti in tis:
+            tid = utils.alchemy_to_dict(ti)
+            dr = dag_runs.get(ti.execution_date)
+            tid['external_trigger'] = dr['external_trigger'] if dr else False
+            task_instances[(ti.task_id, ti.execution_date)] = tid
 
         expanded = []
-
         # The default recursion traces every path so that tree view has full
         # expand/collapse functionality. After 5,000 nodes we stop and fall
         # back on a quick DFS search for performance. See PR #320.
@@ -1083,11 +1083,10 @@ class Airflow(BaseView):
             return {
                 'name': task.task_id,
                 'instances': [
-                    utils.alchemy_to_dict(
-                        task_instances.get((task.task_id, d))) or {
-                        'execution_date': d.isoformat(),
-                        'task_id': task.task_id
-                    }
+                        task_instances.get((task.task_id, d)) or {
+                            'execution_date': d.isoformat(),
+                            'task_id': task.task_id
+                        }
                     for d in dates],
                 children_key: children,
                 'num_dep': len(task.upstream_list),
@@ -1099,24 +1098,19 @@ class Airflow(BaseView):
                 'depends_on_past': task.depends_on_past,
                 'ui_color': task.ui_color,
             }
-
-        if len(dag.roots) > 1:
-            # d3 likes a single root
-            data = {
-                'name': 'root',
-                'instances': [],
-                'children': [recurse_nodes(t, set()) for t in dag.roots]
-            }
-        elif len(dag.roots) == 1:
-            data = recurse_nodes(dag.roots[0], set())
-        else:
-            flash("No tasks found.", "error")
-            data = []
+        data = {
+            'name': '[DAG]',
+            'children': [recurse_nodes(t, set()) for t in dag.roots],
+            'instances': [
+                dag_runs.get(d) or {'execution_date': d.isoformat()}
+                for d in dates],
+        }
 
         data = json.dumps(data, indent=4, default=utils.json_ser)
         session.commit()
         session.close()
 
+        form = TreeForm(data={'base_date': max_date, 'num_runs': num_runs})
         return self.render(
             'airflow/tree.html',
             operators=sorted(
@@ -1178,19 +1172,36 @@ class Airflow(BaseView):
         else:
             dttm = dag.latest_execution_date or datetime.now().date()
 
-        form = GraphForm(data={'execution_date': dttm, 'arrange': arrange})
+        DR = models.DagRun
+        drs = session.query(DR).filter_by(dag_id=dag_id).all()
+        dr_choices = []
+        dr_state = None
+        for dr in drs:
+            dr_choices.append((dr.execution_date.isoformat(), dr.run_id))
+            if dttm == dr.execution_date:
+                dr_state = dr.state
+        flash(str(dttm))
+        class GraphForm(Form):
+            execution_date = SelectField("DAG run", choices=dr_choices)
+            arrange = SelectField("Layout", choices=(
+                ('LR', "Left->Right"),
+                ('RL', "Right->Left"),
+                ('TB', "Top->Bottom"),
+                ('BT', "Bottom->Top"),
+            ))
+        form = GraphForm(data={'execution_date': dttm.isoformat(), 'arrange': arrange})
 
         task_instances = {
             ti.task_id: utils.alchemy_to_dict(ti)
             for ti in dag.get_task_instances(session, dttm, dttm)
-            }
+        }
         tasks = {
             t.task_id: {
                 'dag_id': t.dag_id,
                 'task_type': t.task_type,
             }
             for t in dag.tasks
-            }
+        }
         if not tasks:
             flash("No tasks found", "error")
         session.commit()
@@ -1204,6 +1215,7 @@ class Airflow(BaseView):
             width=request.args.get('width', "100%"),
             height=request.args.get('height', "800"),
             execution_date=dttm.isoformat(),
+            state_token=state_token(dr_state),
             doc_md=doc_md,
             arrange=arrange,
             operators=sorted(
@@ -1763,6 +1775,43 @@ class JobModelView(ModelViewOnly):
         hostname=nobr_f,
         state=state_f,
         latest_heartbeat=datetime_f)
+
+class DagRunModelView(ModelViewOnly):
+    verbose_name_plural = "DAG Runs"
+    can_delete = True
+    can_edit = True
+    column_editable_list = ('state',)
+    verbose_name = "dag run"
+    form_choices = {
+        'state': [
+            ('success', 'success'),
+            ('running', 'running'),
+            ('failed', 'failed'),
+        ],
+    }
+    column_list = (
+        'state', 'dag_id', 'execution_date', 'run_id', 'external_trigger')
+    column_filters = column_list
+    column_searchable_list = ('dag_id', 'state', 'run_id')
+    column_formatters = dict(
+        execution_date=datetime_f,
+        state=state_f,
+        start_date=datetime_f,
+        dag_id=dag_link)
+    @action(
+        'set_running', "Set state to 'running'", None)
+    @utils.provide_session
+    def action_set_running(self, ids, session=None):
+        try:
+            DR = models.DagRun
+            count = 0
+            for dr in session.query(DR).filter(DR.id.in_(ids)).all():
+                count += 1
+            flash("{} dag runs were set to 'running'".format(ids))
+        except Exception as ex:
+            if not self.handle_view_exception(ex):
+                raise Exception("Ooops")
+            flash('Failed to set state', 'error')
 
 
 class LogModelView(ModelViewOnly):
