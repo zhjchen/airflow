@@ -629,7 +629,7 @@ class BackfillJob(BaseJob):
 
             start_date = start_date or task.start_date
             end_date = end_date or task.end_date or datetime.now()
-            for dttm in self.dag.date_range(start_date, end_date):
+            for dttm in self.dag.date_range(start_date, end_date=end_date):
                 ti = models.TaskInstance(task, dttm)
                 tasks_to_run[ti.key] = ti
 

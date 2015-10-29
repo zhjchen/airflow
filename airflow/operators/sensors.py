@@ -71,12 +71,9 @@ class SqlSensor(BaseSensorOperator):
 
     @apply_defaults
     def __init__(self, conn_id, sql, *args, **kwargs):
-
-        super(SqlSensor, self).__init__(*args, **kwargs)
-
         self.sql = sql
         self.conn_id = conn_id
-
+        super(SqlSensor, self).__init__(*args, **kwargs)
 
     def poke(self, context):
         hook = BaseHook.get_connection(self.conn_id).get_hook()

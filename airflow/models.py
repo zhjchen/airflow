@@ -1980,8 +1980,11 @@ class DAG(object):
         return hash(tuple(hash_components))
 
     def date_range(self, start_date, num=None, end_date=datetime.now()):
+        if num:
+            end_date = None
         return utils.date_range(
-            start_date, end_date, num, delta=self._schedule_interval)
+            start_date=start_date, end_date=end_date,
+            num=num, delta=self._schedule_interval)
 
     def following_schedule(self, dttm):
         if isinstance(self._schedule_interval, six.string_types):

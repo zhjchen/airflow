@@ -901,7 +901,6 @@ class Airflow(BaseView):
                     response = redirect(origin)
                 else:
                     details = "\n".join([str(t) for t in tis])
-
                     response = self.render(
                         'airflow/confirm.html',
                         message=(
@@ -926,10 +925,6 @@ class Airflow(BaseView):
             else:
                 start_date = execution_date
 
-            if execution_date < start_date or end_date < start_date:
-                flash("Selected date before DAG start date", 'error')
-                return redirect(origin)
-
             start_date = execution_date if not past else start_date
 
             if downstream:
@@ -941,7 +936,7 @@ class Airflow(BaseView):
                     t.task_id
                     for t in task.get_flat_relatives(upstream=True)]
             TI = models.TaskInstance
-            dates = utils.date_range(start_date, end_date)
+            dates = dag.date_range(start_date, end_date=end_date)
             tis = session.query(TI).filter(
                 TI.dag_id == dag_id,
                 TI.execution_date.in_(dates),
@@ -1300,7 +1295,6 @@ class Airflow(BaseView):
                     secs = old_div((ti.end_date - ts).total_seconds(), 60*60)
                     data.append([ti.execution_date.isoformat(), secs])
             all_data.append({'data': data, 'name': task.task_id})
-            print(all_data)
 
         session.commit()
         session.close()

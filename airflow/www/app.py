@@ -83,7 +83,6 @@ def create_app(config=None):
             for v in admin_views:
                 admin.add_view(v)
             for bp in flask_blueprints:
-                print(bp)
                 app.register_blueprint(bp)
             for ml in menu_links:
                 admin.add_link(ml)
