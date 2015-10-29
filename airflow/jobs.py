@@ -342,28 +342,29 @@ class SchedulerJob(BaseJob):
         This method checks whether a new DagRun needs to be created
         for a DAG based on scheduling interval
         """
-        DagRun = models.DagRun
-        session = settings.Session()
-        qry = session.query(func.max(DagRun.execution_date)).filter(and_(
-            DagRun.dag_id == dag.dag_id,
-            DagRun.external_trigger == False
-        ))
-        last_scheduled_run = qry.scalar()
-        if not last_scheduled_run:
-            next_run_date = min([t.start_date for t in dag.tasks])
-        else:
-            next_run_date = dag.following_schedule(last_scheduled_run)
+        if dag.schedule_interval:
+            DagRun = models.DagRun
+            session = settings.Session()
+            qry = session.query(func.max(DagRun.execution_date)).filter(and_(
+                DagRun.dag_id == dag.dag_id,
+                DagRun.external_trigger == False
+            ))
+            last_scheduled_run = qry.scalar()
+            if not last_scheduled_run:
+                next_run_date = min([t.start_date for t in dag.tasks])
+            else:
+                next_run_date = dag.following_schedule(last_scheduled_run)
 
-        if next_run_date <= datetime.now():
-            next_run = DagRun(
-                dag_id=dag.dag_id,
-                run_id='scheduled__' + next_run_date.isoformat(),
-                execution_date=next_run_date,
-                state=State.RUNNING,
-                external_trigger=False
-            )
-            session.add(next_run)
-            session.commit()
+            if next_run_date <= datetime.now():
+                next_run = DagRun(
+                    dag_id=dag.dag_id,
+                    run_id='scheduled__' + next_run_date.isoformat(),
+                    execution_date=next_run_date,
+                    state=State.RUNNING,
+                    external_trigger=False
+                )
+                session.add(next_run)
+                session.commit()
 
     def process_dag(self, dag, executor):
         """

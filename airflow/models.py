@@ -10,6 +10,7 @@ from past.builtins import basestring
 from builtins import object, bytes
 import copy
 from datetime import datetime, timedelta
+from dateutil import relativedelta
 import functools
 import getpass
 import imp
@@ -26,7 +27,7 @@ from urllib.parse import urlparse
 
 from sqlalchemy import (
     Column, Integer, String, DateTime, Text, Boolean, ForeignKey, PickleType,
-    Index, BigInteger)
+    Index)
 from sqlalchemy import case, func, or_, and_
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.dialects.mysql import LONGTEXT
@@ -62,7 +63,7 @@ else:
     LongText = Text
 
 
-def clear_task_instances(tis, session):
+def clear_task_instances(tis, session, activate_dag_runs=True):
     '''
     Clears a set of task instances, but makes sure the running ones
     get killed.
@@ -79,6 +80,15 @@ def clear_task_instances(tis, session):
         from airflow.jobs import BaseJob as BJ
         for job in session.query(BJ).filter(BJ.id.in_(job_ids)).all():
             job.state = State.SHUTDOWN
+    if activate_dag_runs:
+        execution_dates = {ti.execution_date for ti in tis}
+        dag_ids = {ti.dag_id for ti in tis}
+        drs = session.query(DagRun).filter(
+            DagRun.dag_id.in_(dag_ids),
+            DagRun.execution_date.in_(execution_dates),
+        ).all()
+        for dr in drs:
+            dr.state = State.RUNNING
 
 
 class DagBag(object):
@@ -1970,14 +1980,14 @@ class DAG(object):
         if isinstance(self.schedule_interval, six.string_types):
             cron = croniter(self.schedule_interval, dttm)
             return cron.get_next(datetime)
-        else:
+        elif isinstance(self.schedule_interval, timedelta):
             return dttm + self.schedule_interval
 
     def previous_schedule(self, dttm):
         if isinstance(self.schedule_interval, six.string_types):
             cron = croniter(self.schedule_interval, dttm)
             return cron.get_prev(datetime)
-        else:
+        elif isinstance(self.schedule_interval, timedelta):
             return dttm - self.schedule_interval
 
     @property

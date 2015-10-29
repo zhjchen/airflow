@@ -76,18 +76,23 @@ def backfill(args):
 
 
 def trigger_dag(args):
+    log_to_stdout()
     session = settings.Session()
     # TODO: verify dag_id
-    dag_id = args.dag_id
-    run_id = args.run_id or None
     execution_date = datetime.now()
-    trigger = DagRun(
-        dag_id=dag_id,
-        run_id=run_id,
-        execution_date=execution_date,
-        state=State.RUNNING,
-        external_trigger=True)
-    session.add(trigger)
+    dr = session.query(DagRun).filter(
+        DagRun.dag_id==args.dag_id, DagRun.run_id==args.run_id).first()
+    if dr:
+        logging.error("This run_id already exists")
+    else:
+        trigger = DagRun(
+            dag_id=args.dag_id,
+            run_id=args.run_id,
+            execution_date=execution_date,
+            state=State.RUNNING,
+            external_trigger=True)
+        session.add(trigger)
+        logging.info("Created {}".format(trigger))
     session.commit()
 
 

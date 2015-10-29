@@ -32,7 +32,7 @@ import json
 
 from wtforms import (
     widgets,
-    Form, DateTimeField, SelectField, TextAreaField, PasswordField, StringField)
+    Form, SelectField, TextAreaField, PasswordField, StringField)
 
 from pygments import highlight, lexers
 from pygments.formatters import HtmlFormatter
@@ -41,14 +41,14 @@ import airflow
 from airflow import models
 from airflow.settings import Session
 from airflow import login
-from airflow.configuration import conf, AirflowConfigException
+from airflow.configuration import conf
 from airflow import utils
 from airflow.utils import AirflowException
 from airflow.www import utils as wwwutils
 from airflow import settings
 from airflow.models import State
 
-from airflow.www.forms import DateTimeForm, TreeForm, GraphForm
+from airflow.www.forms import DateTimeForm, TreeForm
 
 QUERY_LIMIT = 100000
 CHART_LIMIT = 200000
@@ -1032,23 +1032,24 @@ class Airflow(BaseView):
 
         dates = utils.date_range(
             base_date, num=-abs(num_runs), delta=dag.schedule_interval)
+        min_date = dates[0] if dates else datetime(2000, 1, 1)
 
         DR = models.DagRun
         dag_runs = (
             session.query(DR)
             .filter(
                 DR.dag_id==dag.dag_id,
-                DR.execution_date>=dates[0],
-                DR.execution_date<=dates[-1])
+                DR.execution_date<=base_date,
+                DR.execution_date>=min_date)
             .all()
         )
         dag_runs = {
             dr.execution_date: utils.alchemy_to_dict(dr) for dr in dag_runs}
 
         tis = dag.get_task_instances(
-                session, start_date=dates[0], end_date=dates[-1])
+                session, start_date=min_date, end_date=base_date)
         dates = sorted(list({ti.execution_date for ti in tis}))
-        max_date = max([ti.execution_date for ti in tis])
+        max_date = max([ti.execution_date for ti in tis]) if dates else None
         task_instances = {}
         for ti in tis:
             tid = utils.alchemy_to_dict(ti)
@@ -1180,7 +1181,7 @@ class Airflow(BaseView):
             dr_choices.append((dr.execution_date.isoformat(), dr.run_id))
             if dttm == dr.execution_date:
                 dr_state = dr.state
-        flash(str(dttm))
+
         class GraphForm(Form):
             execution_date = SelectField("DAG run", choices=dr_choices)
             arrange = SelectField("Layout", choices=(
@@ -1189,7 +1190,8 @@ class Airflow(BaseView):
                 ('TB', "Top->Bottom"),
                 ('BT', "Bottom->Top"),
             ))
-        form = GraphForm(data={'execution_date': dttm.isoformat(), 'arrange': arrange})
+        form = GraphForm(
+            data={'execution_date': dttm.isoformat(), 'arrange': arrange})
 
         task_instances = {
             ti.task_id: utils.alchemy_to_dict(ti)

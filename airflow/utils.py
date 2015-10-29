@@ -287,7 +287,7 @@ def date_range(
         start_date,
         end_date=None,
         num=None,
-        delta=timedelta(1)):
+        delta=None):
     """
     Get a set of dates as a list based on a start, end and delta, delta
     can be something that can be added to ``datetime.datetime``
@@ -315,6 +315,8 @@ def date_range(
       datetime.datetime(2016, 2, 1, 0, 0),
       datetime.datetime(2016, 3, 1, 0, 0)]
     """
+    if not delta:
+        return []
     if end_date and start_date > end_date:
         raise Exception("Wait. start_date needs to be before end_date")
     if end_date and num:
