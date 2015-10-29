@@ -6,11 +6,9 @@ from __future__ import unicode_literals
 from future.standard_library import install_aliases
 install_aliases()
 from builtins import str
-from past.builtins import basestring
 from builtins import object, bytes
 import copy
 from datetime import datetime, timedelta
-from dateutil import relativedelta
 import functools
 import getpass
 import imp
@@ -1562,7 +1560,7 @@ class BaseOperator(object):
         all strings in it.
         '''
         rt = self.render_template
-        if isinstance(content, basestring):
+        if isinstance(content, six.string_types):
             result = jinja_env.from_string(content).render(**context)
         elif isinstance(content, (list, tuple)):
             result = [rt(e, context) for e in content]
@@ -1588,9 +1586,12 @@ class BaseOperator(object):
             else jinja2.Environment(cache_size=0)
 
         exts = self.__class__.template_ext
-        return jinja_env.get_template(content).render(**context) \
-            if isinstance(content, basestring) and any([content.endswith(ext) for ext in exts]) \
-            else self.render_template_from_field(content, context, jinja_env)
+        if (
+                isinstance(content, six.string_types) and
+                any([content.endswith(ext) for ext in exts])):
+            return jinja_env.get_template(content).render(**context)
+        else:
+            return self.render_template_from_field(content, context, jinja_env)
 
     def prepare_template(self):
         '''
@@ -1605,7 +1606,7 @@ class BaseOperator(object):
         # Getting the content of files for template_field / template_ext
         for attr in self.template_fields:
             content = getattr(self, attr)
-            if (content and isinstance(content, basestring) and
+            if (content and isinstance(content, six.string_types) and
                     any([content.endswith(ext) for ext in self.template_ext])):
                 env = self.dag.get_template_env()
                 try:
@@ -1722,7 +1723,7 @@ class BaseOperator(object):
         logging.info('Dry run')
         for attr in self.template_fields:
             content = getattr(self, attr)
-            if content and isinstance(content, basestring):
+            if content and isinstance(content, six.string_types):
                 logging.info('Rendering template for {0}'.format(attr))
                 logging.info(content)
 
@@ -1928,9 +1929,10 @@ class DAG(object):
         self.dag_id = dag_id
         self.start_date = start_date
         self.end_date = end_date or datetime.now()
-        self.schedule_interval = schedule_interval
+        if isinstance(schedule_interval, str):
+            self.schedule_interval = schedule_interval
         self.full_filepath = full_filepath if full_filepath else ''
-        if isinstance(template_searchpath, basestring):
+        if isinstance(template_searchpath, six.string_types):
             template_searchpath = [template_searchpath]
         self.template_searchpath = template_searchpath
         self.parent_dag = None  # Gets set when DAGs are loaded
