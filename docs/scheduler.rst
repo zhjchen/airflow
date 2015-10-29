@@ -33,10 +33,28 @@ DAG Runs
 ''''''''
 
 Each DAG may or may not have a schedule, which informs how ``DAG Runs`` are
-created. ``schedule_interval`` is defined as a DAG arguments, and receives 
+created. ``schedule_interval`` is defined as a DAG arguments, and receives
 preferably a
 [cron expression](https://en.wikipedia.org/wiki/Cron#CRON_expression) as
-a ``str``, or a ``datetime.timedelta`` object. Your DAG will be instantiated
+a ``str``, or a ``datetime.timedelta`` object. Alternatively, you can also
+use one of these cron "preset":
+
++--------------+---------------------------------------------------------------- +---------------+
+| preset       | Run once a year at midnight of January 1                        | cron          |
++==============+================================================================ +===============+
+| ``@yearly``  | Run once a year at midnight of January 1                        | ``0 0 1 1 *`` |
++--------------+---------------------------------------------------------------- +---------------+
+| ``@monthly`` | Run once a month at midnight of the first day of the month      | ``0 0 1 * *`` |
++--------------+---------------------------------------------------------------- +---------------+
+| ``@weekly``  | Run once a week at midnight on Sunday morning                   | ``0 0 * * 0`` |
++--------------+---------------------------------------------------------------- +---------------+
+| ``@daily``   | Run once a day at midnight                                      | ``0 0 * * *`` |
++--------------+---------------------------------------------------------------- +---------------+
+| ``@hourly``  | Run once an hour at the beginning of the hour                   | ``0 * * * *`` |
++--------------+---------------------------------------------------------------- +---------------+
+
+
+Your DAG will be instantiated
 for each schedule, while creating a ``DAG Run`` entry for each schedule.
 
 DAG runs have a state associated to them (running, failed, success) and

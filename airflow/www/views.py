@@ -1030,8 +1030,7 @@ class Airflow(BaseView):
         else:
             base_date = dag.latest_execution_date or datetime.now()
 
-        dates = utils.date_range(
-            base_date, num=-abs(num_runs), delta=dag.schedule_interval)
+        dates = dag.date_range(base_date, num=-abs(num_runs))
         min_date = dates[0] if dates else datetime(2000, 1, 1)
 
         DR = models.DagRun
@@ -1296,8 +1295,8 @@ class Airflow(BaseView):
             for ti in task.get_task_instances(session, from_date):
                 if ti.end_date:
                     ts = ti.execution_date
-                    if task.schedule_interval:
-                        ts += task.schedule_interval
+                    if dag.schedule_interval:
+                        ts = dag.following_schedule(ts)
                     secs = old_div((ti.end_date - ts).total_seconds(), 60*60)
                     data.append([ti.execution_date.isoformat(), secs])
             all_data.append({'data': data, 'name': task.task_id})

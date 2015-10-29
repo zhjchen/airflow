@@ -421,10 +421,9 @@ class TimeDeltaSensor(BaseSensorOperator):
         self.delta = delta
 
     def poke(self, context):
-        target_dttm = (
-            context['execution_date'] +
-            context['dag'].schedule_interval +
-            self.delta)
+        dag = context['dag']
+        target_dttm = dag.following_schedule(context['execution_date'])
+        target_dttm += self.delta
         logging.info('Checking if the time ({0}) has come'.format(target_dttm))
         return datetime.now() > target_dttm
 

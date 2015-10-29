@@ -1492,7 +1492,7 @@ class BaseOperator(object):
         schedule_interval as it may not be attached to a DAG.
         """
         if hasattr(self, 'dag') and self.dag:
-            return self.dag.schedule_interval
+            return self.dag._schedule_interval
         else:
             return self._schedule_interval
 
@@ -1712,8 +1712,7 @@ class BaseOperator(object):
         start_date = start_date or self.start_date
         end_date = end_date or self.end_date or datetime.now()
 
-        for dt in utils.date_range(
-                start_date, end_date, delta=self.schedule_interval):
+        for dt in self.dag.date_range(start_date, end_date=end_date):
             TaskInstance(self, dt).run(
                 mark_success=mark_success,
                 ignore_dependencies=ignore_dependencies,
@@ -1929,8 +1928,11 @@ class DAG(object):
         self.dag_id = dag_id
         self.start_date = start_date
         self.end_date = end_date or datetime.now()
-        if isinstance(schedule_interval, str):
-            self.schedule_interval = schedule_interval
+        self.schedule_interval = schedule_interval
+        if schedule_interval in utils.cron_presets:
+            self._schedule_interval = utils.cron_presets.get(schedule_interval)
+        else:
+            self._schedule_interval = schedule_interval
         self.full_filepath = full_filepath if full_filepath else ''
         if isinstance(template_searchpath, six.string_types):
             template_searchpath = [template_searchpath]
@@ -1977,19 +1979,23 @@ class DAG(object):
                 hash_components.append(repr(val))
         return hash(tuple(hash_components))
 
+    def date_range(self, start_date, num=None, end_date=datetime.now()):
+        return utils.date_range(
+            start_date, end_date, num, delta=self._schedule_interval)
+
     def following_schedule(self, dttm):
-        if isinstance(self.schedule_interval, six.string_types):
-            cron = croniter(self.schedule_interval, dttm)
+        if isinstance(self._schedule_interval, six.string_types):
+            cron = croniter(self._schedule_interval, dttm)
             return cron.get_next(datetime)
-        elif isinstance(self.schedule_interval, timedelta):
-            return dttm + self.schedule_interval
+        elif isinstance(self._schedule_interval, timedelta):
+            return dttm + self._schedule_interval
 
     def previous_schedule(self, dttm):
-        if isinstance(self.schedule_interval, six.string_types):
-            cron = croniter(self.schedule_interval, dttm)
+        if isinstance(self._schedule_interval, six.string_types):
+            cron = croniter(self._schedule_interval, dttm)
             return cron.get_prev(datetime)
-        elif isinstance(self.schedule_interval, timedelta):
-            return dttm - self.schedule_interval
+        elif isinstance(self._schedule_interval, timedelta):
+            return dttm - self._schedule_interval
 
     @property
     def task_ids(self):
