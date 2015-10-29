@@ -14,6 +14,7 @@ args = {
 dag = airflow.DAG(
     'example_xcom',
     start_date=datetime(2015, 1, 1),
+    schedule_interval="@once",
     default_args=args)
 
 value_1 = [1, 2, 3]

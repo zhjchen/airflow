@@ -352,10 +352,10 @@ class SchedulerJob(BaseJob):
             last_scheduled_run = qry.scalar()
             if not last_scheduled_run:
                 next_run_date = min([t.start_date for t in dag.tasks])
-            else:
+            elif dag.schedule_interval != '@once':
                 next_run_date = dag.following_schedule(last_scheduled_run)
 
-            if next_run_date <= datetime.now():
+            if next_run_date and next_run_date <= datetime.now():
                 next_run = DagRun(
                     dag_id=dag.dag_id,
                     run_id='scheduled__' + next_run_date.isoformat(),

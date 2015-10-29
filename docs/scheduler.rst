@@ -1,11 +1,11 @@
-The Scheduler
-=============
+Scheduling & Triggers
+=====================
 
-The Airflow scheduler monitors all tasks and all DAGs and schedules the
+The Airflow scheduler monitors all tasks and all DAGs, and triggers the
 task instances whose dependencies have been met. Behind the scenes,
-it monitors a folder for all DAG objects it may contain,
-and periodically inspects all tasks to see whether it can schedule the
-next run.
+it monitors and stays in sync with a folder for all DAG objects it may contain,
+and periodically (every minute or so) inspects active tasks to see whether
+they can be triggered.
 
 The Airflow scheduler is designed to run as a persistent service in an
 Airflow production environment. To kick it off, all you need to do is
@@ -18,9 +18,9 @@ In other words, the job instance is started once the period it covers
 has ended.
 
 The scheduler starts an instance of the executor specified in the your
-``airflow.cfg``. If it happens to be the LocalExecutor, tasks will be
-executed as subprocesses; in the case of CeleryExecutor and MesosExecutor, 
-tasks are executed remotely.
+``airflow.cfg``. If it happens to be the ``LocalExecutor``, tasks will be
+executed as subprocesses; in the case of ``CeleryExecutor`` and 
+``MesosExecutor``, tasks are executed remotely.
 
 To start a scheduler, simply run the command:
 
@@ -32,6 +32,8 @@ To start a scheduler, simply run the command:
 DAG Runs
 ''''''''
 
+A DAG Run is an object representing an instantiation of the DAG in time. 
+
 Each DAG may or may not have a schedule, which informs how ``DAG Runs`` are
 created. ``schedule_interval`` is defined as a DAG arguments, and receives
 preferably a
@@ -42,15 +44,17 @@ use one of these cron "preset":
 +--------------+---------------------------------------------------------------- +---------------+
 | preset       | Run once a year at midnight of January 1                        | cron          |
 +==============+================================================================ +===============+
-| ``@yearly``  | Run once a year at midnight of January 1                        | ``0 0 1 1 *`` |
+| ``@once``    | Schedule once and only once                                     |               |
 +--------------+---------------------------------------------------------------- +---------------+
-| ``@monthly`` | Run once a month at midnight of the first day of the month      | ``0 0 1 * *`` |
-+--------------+---------------------------------------------------------------- +---------------+
-| ``@weekly``  | Run once a week at midnight on Sunday morning                   | ``0 0 * * 0`` |
+| ``@hourly``  | Run once an hour at the beginning of the hour                   | ``0 * * * *`` |
 +--------------+---------------------------------------------------------------- +---------------+
 | ``@daily``   | Run once a day at midnight                                      | ``0 0 * * *`` |
 +--------------+---------------------------------------------------------------- +---------------+
-| ``@hourly``  | Run once an hour at the beginning of the hour                   | ``0 * * * *`` |
+| ``@weekly``  | Run once a week at midnight on Sunday morning                   | ``0 0 * * 0`` |
++--------------+---------------------------------------------------------------- +---------------+
+| ``@monthly`` | Run once a month at midnight of the first day of the month      | ``0 0 1 * *`` |
++--------------+---------------------------------------------------------------- +---------------+
+| ``@yearly``  | Run once a year at midnight of January 1                        | ``0 0 1 1 *`` |
 +--------------+---------------------------------------------------------------- +---------------+
 
 

@@ -1054,7 +1054,8 @@ class TaskInstance(Base):
         session.commit()
         logging.error(str(error))
 
-    def get_template_context(self):
+    @provide_session
+    def get_template_context(self, session=None):
         task = self.task
         from airflow import macros
         tables = None
@@ -1068,8 +1069,19 @@ class TaskInstance(Base):
         ti_key_str = ti_key_str.format(**locals())
 
         params = {}
-        if hasattr(task, 'dag') and task.dag.params:
-            params.update(task.dag.params)
+        run_id = ''
+        dag_run = None
+        if hasattr(task, 'dag'):
+            if task.dag.params:
+                params.update(task.dag.params)
+            dag_run = (
+                session.query(DagRun)
+                .filter_by(
+                    dag_id=task.dag.dag_id,
+                    execution_date=self.execution_date)
+                .first()
+            )
+            run_id = dag_run.run_id if dag_run else None
         if task.params:
             params.update(task.params)
 
@@ -1081,6 +1093,8 @@ class TaskInstance(Base):
             'END_DATE': ds,
             'ds_nodash': ds_nodash,
             'end_date': ds,
+            'dag_run': dag_run,
+            'run_id': run_id,
             'execution_date': self.execution_date,
             'latest_date': ds,
             'macros': macros,
@@ -1931,6 +1945,8 @@ class DAG(object):
         self.schedule_interval = schedule_interval
         if schedule_interval in utils.cron_presets:
             self._schedule_interval = utils.cron_presets.get(schedule_interval)
+        elif schedule_interval == '@once':
+            self._schedule_interval = None
         else:
             self._schedule_interval = schedule_interval
         self.full_filepath = full_filepath if full_filepath else ''
@@ -2621,6 +2637,11 @@ class DagRun(Base):
     state = Column(String(50), default=State.RUNNING)
     run_id = Column(String(ID_LEN))
     external_trigger = Column(Boolean, default=False)
+    conf = Column(PickleType)
+
+    __table_args__ = (
+        Index('dr_run_id', dag_id, run_id, unique=True),
+    )
 
     def __repr__(self):
         return (
