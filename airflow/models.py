@@ -27,7 +27,7 @@ from urllib.parse import urlparse
 
 from sqlalchemy import (
     Column, Integer, String, DateTime, Text, Boolean, ForeignKey, PickleType,
-    Index)
+    Index, Float)
 from sqlalchemy import case, func, or_, and_
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.dialects.mysql import LONGTEXT
@@ -205,7 +205,6 @@ class DagBag(object):
                     dag.full_filepath = filepath
                     dag.is_subdag = False
                     self.bag_dag(dag, parent_dag=dag, root_dag=dag)
-                    # dag.pickle()
 
             self.file_last_changed[filepath] = dttm
 
@@ -510,7 +509,7 @@ class TaskInstance(Base):
     execution_date = Column(DateTime, primary_key=True)
     start_date = Column(DateTime)
     end_date = Column(DateTime)
-    duration = Column(Integer)
+    duration = Column(Float)
     state = Column(String(20))
     try_number = Column(Integer)
     hostname = Column(String(1000))
@@ -1128,7 +1127,7 @@ class TaskInstance(Base):
 
     def set_duration(self):
         if self.end_date and self.start_date:
-            self.duration = (self.end_date - self.start_date).seconds
+            self.duration = (self.end_date - self.start_date).total_seconds()
         else:
             self.duration = None
 
@@ -2606,8 +2605,8 @@ class DagRun(Base):
     __tablename__ = "dag_run"
 
     id = Column(Integer, primary_key=True)
-    dag_id = Column(String(ID_LEN), unique=True)
-    execution_date = Column(DateTime, unique=True)
+    dag_id = Column(String(ID_LEN))
+    execution_date = Column(DateTime)
     state = Column(String(50), default=State.RUNNING)
     run_id = Column(String(ID_LEN))
     external_trigger = Column(Boolean, default=False)

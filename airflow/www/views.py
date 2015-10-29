@@ -1295,13 +1295,13 @@ class Airflow(BaseView):
             data = []
             for ti in task.get_task_instances(session, from_date):
                 if ti.end_date:
-                    data.append([
-                        ti.execution_date.isoformat(), old_div((
-                                                                   ti.end_date - (
-                                                                       ti.execution_date + task.schedule_interval)
-                                                               ).total_seconds(),(60*60))
-                    ])
+                    ts = ti.execution_date
+                    if task.schedule_interval:
+                        ts += task.schedule_interval
+                    secs = old_div((ti.end_date - ts).total_seconds(), 60*60)
+                    data.append([ti.execution_date.isoformat(), secs])
             all_data.append({'data': data, 'name': task.task_id})
+            print(all_data)
 
         session.commit()
         session.close()
