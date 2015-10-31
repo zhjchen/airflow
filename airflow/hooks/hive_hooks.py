@@ -15,7 +15,7 @@ import pyhs2
 
 from airflow.utils import AirflowException
 from airflow.hooks.base_hook import BaseHook
-from airflow.utils import TemporaryDirectory
+from airflow.utils import TemporaryDirectory, demote, change_mod
 from airflow.configuration import conf
 import airflow.security.utils as utils
 
@@ -103,10 +103,16 @@ class HiveCliHook(BaseHook):
                     hive_cmd.extend(hive_params_list)
                 if verbose:
                     logging.info(" ".join(hive_cmd))
+
+                if self.run_as:
+                        change_mod(tmp_dir)
+                        change_mod(fname)
+
                 sp = subprocess.Popen(
                     hive_cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
+                    preexec_fn=demote(self.run_as) if self.run_as else None,
                     cwd=tmp_dir)
                 self.sp = sp
                 stdout = ''

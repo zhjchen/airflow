@@ -23,6 +23,7 @@ import shutil
 import signal
 import smtplib
 from tempfile import mkdtemp
+from pwd import getpwnam
 
 from alembic.config import Config
 from alembic import command
@@ -91,6 +92,16 @@ class State(object):
             None, cls.FAILED, cls.UP_FOR_RETRY, cls.UPSTREAM_FAILED,
             cls.SKIPPED]
 
+def change_mod(t):
+    os.chmod(t, 0o777)
+
+def demote(username):
+    def result():
+        pw_record = getpwnam(username)
+        os.setgid(pw_record.pw_gid)
+        os.setuid(pw_record.pw_uid)
+        logging.info('impersonate running as uid, gid = %d, %d' % (os.getuid(), os.getgid()))
+    return result
 
 def provide_session(func):
     """
